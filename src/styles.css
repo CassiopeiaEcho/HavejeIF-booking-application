@@ -1,0 +1,65 @@
+:root { font-family: Arial, sans-serif; color: #17211b; background: #f3f5f2; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, input, select { font: inherit; }
+button { border: 0; border-radius: 6px; background: #16794a; color: white; padding: 10px 14px; cursor: pointer; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.secondary { background: #dfe7e1; color: #17211b; }
+button.danger { background: #a52a2a; }
+button.link { background: transparent; color: #16794a; margin-top: 8px; }
+button.brand { background: transparent; color: white; font-size: 20px; font-weight: bold; }
+header { height: 64px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; background: #123d2a; }
+header nav, .tabs { display: flex; gap: 6px; }
+header nav button, .tabs button { background: transparent; }
+header nav button.active, .tabs button.active { background: rgba(255,255,255,.16); }
+.tabs button.active { background: #16794a; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px; }
+.auth-layout { min-height: 100vh; display: grid; place-items: center; }
+.auth-card { width: min(520px, 100%); }
+.center { min-height: 100vh; display: grid; place-items: center; align-content: center; text-align: center; }
+.card { background: white; border: 1px solid #dfe5e1; border-radius: 10px; padding: 18px; box-shadow: 0 2px 8px #0000000a; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
+.venue { display: flex; flex-direction: column; }
+.venue button { margin-top: auto; }
+label { display: block; margin: 12px 0; }
+label input, label select { display: block; width: 100%; margin-top: 6px; padding: 10px; border: 1px solid #bcc8c0; border-radius: 6px; }
+.search { width: 100%; padding: 12px; margin-bottom: 16px; border: 1px solid #bcc8c0; border-radius: 6px; }
+.notice { padding: 10px; background: #edf7f1; border-radius: 6px; }
+.slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin: 16px 0; }
+.slot-grid button { background: #e8eee9; color: #17211b; }
+.slot-grid button.selected { background: #16794a; color: white; }
+.list-row { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; }
+.tabs { margin: 12px 0 20px; }
+.calendar-strip { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 8px; margin: 16px 0; }
+.calendar-days { display: grid; grid-template-columns: repeat(7, minmax(64px, 1fr)); gap: 6px; }
+.calendar-day { min-height: 68px; padding: 8px 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; background: #e8eee9; color: #17211b; }
+.calendar-day span { text-transform: capitalize; font-size: 13px; }
+.calendar-day.selected { background: #16794a; color: white; }
+.calendar-arrow { width: 44px; height: 44px; padding: 0; font-size: 28px; }
+.venue-admin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.venue-admin { min-width: 0; }
+.selected-card { border-color: #16794a; box-shadow: 0 0 0 2px #16794a22; }
+.button-row { display: flex; gap: 8px; margin: 12px 0; }
+.opening-hours { border-top: 1px solid #dfe5e1; margin-top: 14px; padding-top: 8px; }
+.hours-row { display: grid; grid-template-columns: 74px 1fr 12px 1fr 54px; align-items: center; gap: 5px; margin: 7px 0; }
+.hours-row input[type="time"] { width: 100%; min-width: 0; padding: 7px 4px; margin: 0; }
+.hours-row button { padding: 8px 6px; }
+.calendar-panel { margin-top: 20px; }
+.calendar-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.admin-slot-grid button { min-height: 72px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+.admin-slot-grid .free-slot { background: #edf7f1; color: #27613f; border: 1px solid #b8cfbd; }
+.admin-slot-grid .booked-slot { background: #fff1ed; color: #7a3226; border: 1px solid #dda99c; }
+.admin-slot-grid .booked-slot.approved { background: #edf2ff; color: #31487a; border-color: #aab8d8; }
+.admin-slot-grid button span { font-size: 12px; }
+@media (max-width: 700px) {
+  header { height: auto; padding: 10px 12px; align-items: flex-start; }
+  header nav { flex-wrap: wrap; justify-content: flex-end; }
+  main { padding: 16px; }
+  .list-row { align-items: flex-start; gap: 12px; }
+  .calendar-strip { grid-template-columns: 36px minmax(0, 1fr) 36px; }
+  .calendar-days { grid-template-columns: repeat(7, minmax(48px, 1fr)); overflow-x: auto; }
+  .calendar-day { min-width: 48px; }
+  .calendar-arrow { width: 36px; height: 36px; }
+  .venue-admin-grid { grid-template-columns: 1fr; }
+  .button-row, .calendar-heading { flex-direction: column; }
+}
