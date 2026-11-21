@@ -129,7 +129,17 @@ for select using (member_id = auth.uid() or public.is_admin());
 
 drop policy if exists "slots_read" on public.booking_slots;
 create policy "slots_read" on public.booking_slots
-for select using (true);
+for select using (
+  auth.uid() is not null
+  and exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.account_status = 'APPROVED'
+  )
+  and exists (
+    select 1 from public.venues v
+    where v.id = venue_id and (v.active or public.is_admin())
+  )
+);
 
 drop policy if exists "slots_no_direct_write" on public.booking_slots;
 create policy "slots_no_direct_write" on public.booking_slots
@@ -141,14 +151,29 @@ stable security definer set search_path = public as $$
 declare
   hours record;
   cursor_time timestamptz;
+  close_time timestamptz;
 begin
+  if not exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.account_status = 'APPROVED'
+  ) then
+    raise exception 'Kontoen er ikke godkendt';
+  end if;
+  if not exists (
+    select 1 from public.venues v
+    where v.id = p_venue_id and (v.active or public.is_admin())
+  ) then
+    raise exception 'Lokationen er ikke tilgængelig';
+  end if;
+
   select * into hours from public.opening_hours
   where venue_id = p_venue_id and weekday = extract(isodow from p_date)::smallint;
 
   if not found then return; end if;
 
   cursor_time := (p_date + hours.opens_at)::timestamp at time zone 'Europe/Copenhagen';
-  while cursor_time < ((p_date + hours.closes_at)::timestamp at time zone 'Europe/Copenhagen') loop
+  close_time := (p_date + hours.closes_at)::timestamp at time zone 'Europe/Copenhagen';
+  while cursor_time + interval '1 hour' <= close_time loop
     start_time := cursor_time;
     available := not exists (
       select 1 from public.booking_slots bs
@@ -174,6 +199,10 @@ declare
   booking_id bigint;
   slot_start timestamptz;
   booking_profile record;
+  first_slot timestamptz;
+  last_slot timestamptz;
+  slot_count bigint;
+  unique_slot_count bigint;
 begin
   select * into booking_profile from public.profiles where id = auth.uid();
   if booking_profile.account_status is distinct from 'APPROVED' then
@@ -182,24 +211,53 @@ begin
   if coalesce(array_length(p_starts, 1), 0) = 0 then
     raise exception 'Vælg mindst en time';
   end if;
+  if array_ndims(p_starts) <> 1 then
+    raise exception 'Vælg mindst en time';
+  end if;
   if trim(coalesce(p_team_name, '')) = '' then
     raise exception 'Holdnavn er påkrævet';
   end if;
+  if not exists (
+    select 1 from public.venues
+    where id = p_venue_id and active
+  ) then
+    raise exception 'Lokationen er ikke tilgængelig';
+  end if;
+
+  select min(requested.slot_start), max(requested.slot_start),
+    count(*), count(distinct requested.slot_start)
+  into first_slot, last_slot, slot_count, unique_slot_count
+  from unnest(p_starts) as requested(slot_start);
+  if slot_count <> unique_slot_count then
+    raise exception 'Vælg hvert tidsrum kun én gang';
+  end if;
+  if exists (
+    select 1 from unnest(p_starts) requested(slot_start)
+    where (requested.slot_start at time zone 'Europe/Copenhagen')::date
+      <> (first_slot at time zone 'Europe/Copenhagen')::date
+  ) then
+    raise exception 'Alle tidsrum skal være på samme dato';
+  end if;
+  if p_start is distinct from first_slot
+    or p_end is distinct from last_slot + interval '1 hour' then
+    raise exception 'Bookingens start og sluttid passer ikke til de valgte tider';
+  end if;
 
   foreach slot_start in array p_starts loop
-    if exists (
-      select 1 from public.booking_slots bs
-      join public.bookings b on b.id = bs.booking_id
-      where bs.venue_id = p_venue_id
-        and bs.start_time = slot_start
-        and b.status in ('PENDING', 'APPROVED')
+    if not exists (
+      select 1
+      from public.available_slots(
+        p_venue_id,
+        (slot_start at time zone 'Europe/Copenhagen')::date
+      ) candidate
+      where candidate.start_time = slot_start and candidate.available
     ) then
-      raise exception 'Tiden er allerede optaget';
+      raise exception 'Et eller flere tidsrum er ugyldige eller optaget';
     end if;
   end loop;
 
   insert into public.bookings(member_id, venue_id, team_name, start_time, end_time)
-  values (auth.uid(), p_venue_id, trim(p_team_name), p_start, p_end)
+  values (auth.uid(), p_venue_id, trim(p_team_name), first_slot, last_slot + interval '1 hour')
   returning id into booking_id;
 
   foreach slot_start in array p_starts loop
@@ -209,6 +267,12 @@ begin
   return booking_id;
 end;
 $$;
+
+revoke all on function public.available_slots(bigint, date) from public;
+grant execute on function public.available_slots(bigint, date) to authenticated;
+
+revoke all on function public.create_booking(bigint, text, timestamptz[], timestamptz, timestamptz) from public;
+grant execute on function public.create_booking(bigint, text, timestamptz[], timestamptz, timestamptz) to authenticated;
 
 create or replace function public.cancel_booking(p_booking_id bigint)
 returns void language plpgsql security definer set search_path = public as $$

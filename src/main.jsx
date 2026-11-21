@@ -429,6 +429,8 @@ function AdminVenues() {
   const [venues, setVenues] = useState([]);
   const [message, setMessage] = useState("");
   const [editing, setEditing] = useState(null);
+  const [showVenueForm, setShowVenueForm] = useState(false);
+  const [query, setQuery] = useState("");
   const [selectedVenue, setSelectedVenue] = useState(null);
   const venueFormRef = useRef(null);
   const calendarRef = useRef(null);
@@ -440,8 +442,8 @@ function AdminVenues() {
   }
   useEffect(() => { load(); }, []);
   useEffect(() => {
-    if (editing) venueFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [editing]);
+    if (showVenueForm) venueFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [showVenueForm]);
   useEffect(() => {
     if (selectedVenue) calendarRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [selectedVenue]);
@@ -464,43 +466,92 @@ function AdminVenues() {
     else {
       setMessage(editing ? "Lokationen blev opdateret." : "Lokationen blev oprettet.");
       setEditing(null);
+      setShowVenueForm(false);
       formElement.reset();
       load();
     }
   }
 
+  const filteredVenues = venues.filter((venue) =>
+    [venue.name, venue.location, venue.type]
+      .join(" ")
+      .toLocaleLowerCase("da-DK")
+      .includes(query.toLocaleLowerCase("da-DK"))
+  );
+
   return (
     <>
       {message && <p className="notice">{message}</p>}
-      <form ref={venueFormRef} className="card" key={editing?.id || "new"} onSubmit={submitVenue}>
-        <h2>{editing ? "Rediger lokation" : "Ny lokation"}</h2>
-        <label>Navn<input name="name" defaultValue={editing?.name || ""} required /></label>
-        <label>Lokation<input name="location" defaultValue={editing?.location || ""} required /></label>
-        <label>Type<input name="type" defaultValue={editing?.type || ""} required /></label>
-        <label>Kapacitet<input name="capacity" type="number" min="1" defaultValue={editing?.capacity || ""} required /></label>
-        <button>{editing ? "Gem lokation" : "Opret lokation"}</button>
-        {editing && <button type="button" className="secondary" onClick={() => setEditing(null)}>Annuller redigering</button>}
-      </form>
+      <div className="venue-toolbar">
+        <h2>Alle lokationer</h2>
+        <div className="venue-toolbar-controls">
+          <input
+            className="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Søg navn, lokation eller type"
+            aria-label="Søg lokationer"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              if (showVenueForm) {
+                setShowVenueForm(false);
+                setEditing(null);
+              } else {
+                setEditing(null);
+                setShowVenueForm(true);
+              }
+            }}
+          >
+            {showVenueForm ? "Skjul formular" : "Tilføj lokation"}
+          </button>
+        </div>
+      </div>
+      {showVenueForm && (
+        <form ref={venueFormRef} className="card" key={editing?.id || "new"} onSubmit={submitVenue}>
+          <h2>{editing ? "Rediger lokation" : "Ny lokation"}</h2>
+          <label>Navn<input name="name" defaultValue={editing?.name || ""} required /></label>
+          <label>Lokation<input name="location" defaultValue={editing?.location || ""} required /></label>
+          <label>Type<input name="type" defaultValue={editing?.type || ""} required /></label>
+          <label>Kapacitet<input name="capacity" type="number" min="1" defaultValue={editing?.capacity || ""} required /></label>
+          <button>{editing ? "Gem lokation" : "Opret lokation"}</button>
+          {editing && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setEditing(null);
+                setShowVenueForm(false);
+              }}
+            >
+              Annuller redigering
+            </button>
+          )}
+        </form>
+      )}
       {selectedVenue && (
         <div ref={calendarRef}>
           <AdminVenueCalendar venue={selectedVenue} onClose={() => setSelectedVenue(null)} />
         </div>
       )}
-      <h2>Alle lokationer</h2>
       <div className="venue-admin-grid">
-        {venues.map((venue) => (
+        {filteredVenues.map((venue) => (
           <article className={`card venue-admin ${selectedVenue?.id === venue.id ? "selected-card" : ""}`} key={venue.id}>
             <h3>{venue.name}</h3>
             <p>{venue.location}</p>
             <p>{venue.type} · {venue.capacity} personer</p>
             <div className="button-row">
-              <button onClick={() => setEditing(venue)}>Rediger lokation</button>
+              <button onClick={() => { setEditing(venue); setShowVenueForm(true); }}>Rediger lokation</button>
               <button className="secondary" onClick={() => setSelectedVenue(venue)}>Vis kalender</button>
             </div>
             <VenueOpeningHours venue={venue} onSaved={() => load()} />
           </article>
         ))}
       </div>
+      {filteredVenues.length === 0 && (
+        <p>{venues.length === 0 ? "Der er endnu ingen lokationer." : "Ingen lokationer matcher søgningen."}</p>
+      )}
     </>
   );
 }
@@ -515,67 +566,172 @@ const WEEKDAYS = [
   ["7", "Søndag"],
 ];
 
+function openingHoursDraft(openingHours = []) {
+  return Object.fromEntries(WEEKDAYS.map(([weekday]) => {
+    const hours = openingHours.find((item) => item.weekday === Number(weekday));
+    return [weekday, {
+      opens: hours?.opens_at?.slice(0, 5) || "",
+      closes: hours?.closes_at?.slice(0, 5) || "",
+    }];
+  }));
+}
+
 function VenueOpeningHours({ venue, onSaved }) {
   const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [sameHours, setSameHours] = useState(false);
+  const [saved, setSaved] = useState(() => openingHoursDraft(venue.opening_hours));
+  const [draft, setDraft] = useState(() => openingHoursDraft(venue.opening_hours));
 
-  function findHours(weekday) {
-    return venue.opening_hours?.find((item) => item.weekday === Number(weekday));
+  useEffect(() => {
+    const nextHours = openingHoursDraft(venue.opening_hours);
+    setSaved(nextHours);
+    setDraft(nextHours);
+  }, [venue.opening_hours]);
+
+  const isDirty = WEEKDAYS.some(([weekday]) =>
+    draft[weekday].opens !== saved[weekday].opens
+    || draft[weekday].closes !== saved[weekday].closes
+  );
+
+  function updateHours(weekday, field, value) {
+    setMessage("");
+    setDraft((current) => {
+      if (sameHours) {
+        return Object.fromEntries(WEEKDAYS.map(([day]) => [
+          day,
+          { ...current[day], [field]: value },
+        ]));
+      }
+      return { ...current, [weekday]: { ...current[weekday], [field]: value } };
+    });
+  }
+
+  function setSharedHours(checked) {
+    setSameHours(checked);
+    if (!checked) return;
+    const shared = WEEKDAYS
+      .map(([weekday]) => draft[weekday])
+      .find((hours) => hours.opens || hours.closes) || { opens: "", closes: "" };
+    setDraft(Object.fromEntries(WEEKDAYS.map(([weekday]) => [weekday, { ...shared }])));
+  }
+
+  async function saveHours() {
+    const changedDays = WEEKDAYS.filter(([weekday]) =>
+      draft[weekday].opens !== saved[weekday].opens
+      || draft[weekday].closes !== saved[weekday].closes
+    );
+    if (!changedDays.length) return;
+
+    for (const [weekday, label] of changedDays) {
+      const { opens, closes } = draft[weekday];
+      if ((opens && !closes) || (!opens && closes) || (opens && opens >= closes)) {
+        setMessage(`Kontrollér åbningstiderne for ${label.toLowerCase()}.`);
+        return;
+      }
+    }
+
+    setSaving(true);
+    setMessage("");
+    try {
+      for (const [weekday] of changedDays) {
+        const { opens, closes } = draft[weekday];
+        const result = opens
+          ? await supabase.from("opening_hours").upsert({
+            venue_id: venue.id,
+            weekday: Number(weekday),
+            opens_at: opens,
+            closes_at: closes,
+          }, { onConflict: "venue_id,weekday" })
+          : await supabase.from("opening_hours").delete()
+            .eq("venue_id", venue.id)
+            .eq("weekday", Number(weekday));
+
+        if (result.error) {
+          setMessage(result.error.message);
+          onSaved();
+          return;
+        }
+      }
+
+      setSaved(Object.fromEntries(WEEKDAYS.map(([weekday]) => [
+        weekday,
+        { ...draft[weekday] },
+      ])));
+      setMessage("Åbningstider gemt.");
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
-    <div className="opening-hours">
-      <h4>Åbningstider</h4>
-      {WEEKDAYS.map(([value, label]) => {
-        const hours = findHours(value);
-        return (
-          <label className="hours-row" key={value}>
-            <span>{label}</span>
-            <input
-              type="hidden"
-              name="weekday"
-              value={value}
-            />
-            <input
-              name={`opens_${value}`}
-              type="time"
-              defaultValue={hours?.opens_at || ""}
-              aria-label={`Åbningstid ${label}`}
-            />
-            <span>–</span>
-            <input
-              name={`closes_${value}`}
-              type="time"
-              defaultValue={hours?.closes_at || ""}
-              aria-label={`Lukketid ${label}`}
-            />
-            <button
-              type="button"
-              className="secondary"
-              onClick={async (clickEvent) => {
-                const row = clickEvent.currentTarget.closest(".hours-row");
-                const opens = row.querySelector(`[name="opens_${value}"]`).value;
-                const closes = row.querySelector(`[name="closes_${value}"]`).value;
-                if (!opens || !closes || opens >= closes) {
-                  setMessage("Lukketid skal være efter åbningstid.");
-                  return;
-                }
-                const { error } = await supabase.from("opening_hours").upsert({
-                  venue_id: venue.id,
-                  weekday: Number(value),
-                  opens_at: opens,
-                  closes_at: closes,
-                }, { onConflict: "venue_id,weekday" });
-                setMessage(error?.message || "Åbningstid gemt.");
-                if (!error) onSaved();
-              }}
-            >
-              Gem
-            </button>
-          </label>
-        );
-      })}
-      {message && <p className="notice">{message}</p>}
-    </div>
+    <details className="opening-hours">
+      <summary>Åbningstider</summary>
+      <div className="opening-hours-content">
+        <label className="same-hours-toggle">
+          <input
+            type="checkbox"
+            checked={sameHours}
+            onChange={(event) => setSharedHours(event.target.checked)}
+          />
+          <span>Samme åbningstid alle dage</span>
+        </label>
+        {sameHours ? (
+          <>
+            <p className="hours-hint">Tiderne fra den første dag med åbningstid bruges for alle ugens dage.</p>
+            <div className="shared-hours-grid">
+              <label>
+                Åbner
+                <input
+                  type="time"
+                  value={draft["1"].opens}
+                  onChange={(event) => updateHours("1", "opens", event.target.value)}
+                />
+              </label>
+              <label>
+                Lukker
+                <input
+                  type="time"
+                  value={draft["1"].closes}
+                  onChange={(event) => updateHours("1", "closes", event.target.value)}
+                />
+              </label>
+            </div>
+          </>
+        ) : (
+          <div className="hours-grid">
+            {WEEKDAYS.map(([weekday, label]) => (
+              <div className="hours-row" key={weekday}>
+                <span>{label}</span>
+                <input
+                  type="time"
+                  value={draft[weekday].opens}
+                  onChange={(event) => updateHours(weekday, "opens", event.target.value)}
+                  aria-label={`Åbningstid ${label}`}
+                />
+                <span aria-hidden="true">–</span>
+                <input
+                  type="time"
+                  value={draft[weekday].closes}
+                  onChange={(event) => updateHours(weekday, "closes", event.target.value)}
+                  aria-label={`Lukketid ${label}`}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          className={isDirty ? "save-dirty" : "secondary"}
+          disabled={!isDirty || saving}
+          onClick={saveHours}
+        >
+          {saving ? "Gemmer..." : isDirty ? "Gem åbningstider" : "Gemt"}
+        </button>
+        {message && <p className="notice" role="status">{message}</p>}
+      </div>
+    </details>
   );
 }
 
